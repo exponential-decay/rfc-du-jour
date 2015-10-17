@@ -71,9 +71,10 @@ def createRFCRequest(no):
    req.add_header('Range', 'bytes=0-6200') #we don't need the whole page
    return req
 
-def CreateLatestRFCRequest():
-   url = 'https://tools.ietf.org/rfc/indexx'
-   req = urllib2.Request(url)
+def createFindLatestRFCRequest():
+   #index url lists all RFC requests for us...
+   indexurl = 'https://tools.ietf.org/rfc/index'
+   req = urllib2.Request(indexurl)
    req.add_header('User-Agent', '@rfcdujour')
    return returnURL(req)
 
@@ -146,7 +147,7 @@ def create_tweet(parser, rfctitle, rfcurl, author):
    return tweet
 
 
-html = CreateLatestRFCRequest().read()
+html = createFindLatestRFCRequest().read()
 
 indexparser = LatestRFCParser()
 indexparser.feed(html)
