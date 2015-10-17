@@ -6,6 +6,7 @@
 #multi-author:  https://tools.ietf.org/html/rfc6998
 #non-existant:  https://tools.ietf.org/html/rfc7000
 #standard-test: https://tools.ietf.org/html/rfc6998
+#no title:      https://tools.ietf.org/html/rfc1849
 
 import sys
 import random
@@ -88,7 +89,6 @@ def findLatestRFC():
    url = 'https://tools.ietf.org/rfc/index'
    req = urllib2.Request(url)
    req.add_header('User-Agent', '@rfcdujour')
-
    return returnURL(req)
 
 html = findLatestRFC().read()
@@ -113,10 +113,8 @@ if compareLatest(parser.maxRFC):
    #something here about writing a new tweet about a new RFC
 
 random.seed()
-req = createRFCRequest(random.randrange(1,parser.maxRFC))
-
-
-
+rfcnumber = random.randrange(1,parser.maxRFC)
+req = createRFCRequest(rfcnumber)
 
 response = returnURL(req)
 html = response.read()
@@ -131,3 +129,13 @@ parser = HTMLMetadataParser()
 parser.feed(html)
 
 print parser.tweetdata
+print rfcnumber
+
+rfcpart = "RFC" + str(rfcnumber)
+urlpart = 'https://tools.ietf.org/html/rfc' + str(rfcnumber)
+
+tweet = rfcpart + " " + parser.tweetdata['title'] + ", " + parser.tweetdata['issued'] + " " + urlpart 
+#print urlpart
+
+print len(tweet)
+print tweet
