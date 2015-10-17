@@ -72,19 +72,23 @@ def createRFCRequest(no):
    return req
 
 def CreateLatestRFCRequest():
-   url = 'https://tools.ietf.org/rfc/index'
+   url = 'https://tools.ietf.org/rfc/indexx'
    req = urllib2.Request(url)
    req.add_header('User-Agent', '@rfcdujour')
    return returnURL(req)
 
-def returnURL(req):
+#request web page for parsing later
+def returnURL(req, RFCNO=False):
    code = ''
 
    try:
       response = urllib2.urlopen(req)
    except urllib2.HTTPError as e:
-      if e.code == 404:
-         sys.stderr.write("RFC: " + str(1234) + " does not exist.\n")
+      if RFCNO == False:
+         sys.stderr.write(str(e.code) + " response code from index request." + "\n")
+      if RFCNO == True:
+         if e.code == 404:
+            sys.stderr.write("RFC: " + str(1234) + " does not exist.\n")
       sys.exit(0) 
 
       #return not found
@@ -108,7 +112,7 @@ def writeLatest(current):
 def returnRFCHTML(indexparser, rfcnumber):
    req = createRFCRequest(rfcnumber)
 
-   response = returnURL(req)
+   response = returnURL(req, True)
    html = response.read()
 
    # This shows you the actual bytes that have been downloaded.
