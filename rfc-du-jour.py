@@ -63,13 +63,19 @@ class LatestRFCParser(HTMLParser):
                   val = int(x[1].replace(self.ietf, ''))
                   self.maxRFC = max(self.maxRFC, val)
 
-
+#Create requests for IETF server
 def createRFCRequest(no):
    url = 'https://tools.ietf.org/html/rfc' + str(no)
    req = urllib2.Request(url)
    req.add_header('User-Agent', '@rfcdujour')
    req.add_header('Range', 'bytes=0-6200') #we don't need the whole page
    return req
+
+def CreateLatestRFCRequest():
+   url = 'https://tools.ietf.org/rfc/index'
+   req = urllib2.Request(url)
+   req.add_header('User-Agent', '@rfcdujour')
+   return returnURL(req)
 
 def returnURL(req):
    code = ''
@@ -86,12 +92,6 @@ def returnURL(req):
       #else read the data we want
 
    return response
-
-def findLatestRFC():
-   url = 'https://tools.ietf.org/rfc/index'
-   req = urllib2.Request(url)
-   req.add_header('User-Agent', '@rfcdujour')
-   return returnURL(req)
 
 def compareLatest(current):
    f = open('latest.txt', 'rb')
@@ -142,7 +142,7 @@ def create_tweet(parser, rfctitle, rfcurl, author):
    return tweet
 
 
-html = findLatestRFC().read()
+html = CreateLatestRFCRequest().read()
 
 indexparser = LatestRFCParser()
 indexparser.feed(html)
