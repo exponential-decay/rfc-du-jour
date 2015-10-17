@@ -7,6 +7,7 @@
 #non-existant:  https://tools.ietf.org/html/rfc7000
 #standard-test: https://tools.ietf.org/html/rfc6998
 #no title:      https://tools.ietf.org/html/rfc1849
+#email:         https://tools.ietf.org/html/rfc4263
 
 import sys
 import random
@@ -52,13 +53,14 @@ class HTMLMetadataParser(HTMLParser):
          self.tweetdata['author'] = self.author
    
 class LatestRFCParser(HTMLParser):
+   ietf = 'http://tools.ietf.org/html/'
    maxRFC = 0
    def handle_starttag(self, tag, attrs):
       if tag == 'a':
          for x in attrs:
             if x[0] == 'href':
-               if 'http://tools.ietf.org/html/' in x[1]:
-                  val = int(x[1].replace('http://tools.ietf.org/html/', ''))
+               if self.ietf in x[1]:
+                  val = int(x[1].replace(self.ietf, ''))
                   self.maxRFC = max(self.maxRFC, val)
 
 
@@ -91,11 +93,6 @@ def findLatestRFC():
    req.add_header('User-Agent', '@rfcdujour')
    return returnURL(req)
 
-html = findLatestRFC().read()
-
-parser = LatestRFCParser()
-parser.feed(html)
-
 def compareLatest(current):
    f = open('latest.txt', 'rb')
    if current > int(f.read().strip()):
@@ -108,34 +105,60 @@ def writeLatest(current):
    f.write(str(current))
    f.close()   
 
-if compareLatest(parser.maxRFC):
+def returnRFCHTML(indexparser, rfcnumber):
+   req = createRFCRequest(rfcnumber)
+
+   response = returnURL(req)
+   html = response.read()
+
+   # This shows you the actual bytes that have been downloaded.
+   content_range=response.headers.get('Content-Range')
+   sys.stderr.write("Received: " + content_range + "\n")
+
+   # instantiate the parser and feed it HTML
+   parser = HTMLMetadataParser()
+   parser.feed(html)
+
+   return parser
+
+def rfc_title(rfcnumber):
+   rfcpart = "RFC" + str(rfcnumber)
+   return rfcpart
+
+def rfc_url(rfcnumber):
+   urlpart = 'https://tools.ietf.org/html/rfc' + str(rfcnumber)
+   return urlpart
+
+def create_author_string(parser):
+   author = parser.tweetdata['author'][0]
+   if len(parser.tweetdata['author']) > 1:
+      author = author + " et al."
+   else:
+      author = author
+   return author
+
+def create_tweet(parser, rfctitle, rfcurl, author):
+   tweet = rfctitle + " " + parser.tweetdata['title'] + ". " + author + " " + parser.tweetdata['issued'] + " "  + rfcurl 
+   return tweet
+
+
+html = findLatestRFC().read()
+
+indexparser = LatestRFCParser()
+indexparser.feed(html)
+
+if compareLatest(indexparser.maxRFC):
    writeLatest(parser.maxRFC)
    #something here about writing a new tweet about a new RFC
 
 random.seed()
-rfcnumber = random.randrange(1,parser.maxRFC)
-req = createRFCRequest(rfcnumber)
+rfcnumber = random.randrange(1, indexparser.maxRFC)
 
-response = returnURL(req)
-html = response.read()
+parser = returnRFCHTML(indexparser, rfcnumber)
 
-# This shows you the actual bytes that have been downloaded.
-content_range=response.headers.get('Content-Range')
-sys.stderr.write("Received: " + content_range + "\n")
+author = create_author_string(parser)
+rfctitle = rfc_title(rfcnumber)
+rfcurl = rfc_url(rfcnumber)
 
+print create_tweet(parser, rfctitle, rfcurl, author)
 
-# instantiate the parser and fed it some HTML
-parser = HTMLMetadataParser()
-parser.feed(html)
-
-print parser.tweetdata
-print rfcnumber
-
-rfcpart = "RFC" + str(rfcnumber)
-urlpart = 'https://tools.ietf.org/html/rfc' + str(rfcnumber)
-
-tweet = rfcpart + " " + parser.tweetdata['title'] + ", " + parser.tweetdata['issued'] + " " + urlpart 
-#print urlpart
-
-print len(tweet)
-print tweet
