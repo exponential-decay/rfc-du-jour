@@ -8,6 +8,8 @@
 #standard-test: https://tools.ietf.org/html/rfc6998
 #no title:      https://tools.ietf.org/html/rfc1849
 #email:         https://tools.ietf.org/html/rfc4263
+#curious        https://tools.ietf.org/html/rfc6471
+#coffee         https://tools.ietf.org/html/rfc2324
 
 import sys
 import random
@@ -26,6 +28,10 @@ class HTMLMetadataParser(HTMLParser):
    tweetdata = {}
    author = []
 
+   bAuth = False
+   bTitle = False
+   bIssued = False
+
    def handle_starttag(self, tag, attrs):
 
       #placeholder variables
@@ -42,16 +48,26 @@ class HTMLMetadataParser(HTMLParser):
 
             if name == self.dcTitle:
                self.tweetdata['title'] = content
-            
+               self.bTitle = True 
+
             if name == self.dcCreator:
                if content != '':
                   self.author.append(content)
-
+                  self.bAuth = True
+      
             if name == self.dcIssued:
                self.tweetdata['issued'] = content
+               self.bIssued = True
 
-         self.tweetdata['author'] = self.author
-   
+         if self.bAuth is True:
+            self.tweetdata['author'] = self.author
+         else: 
+            self.tweetdata['author'] = None
+         if self.bTitle is False:
+            self.tweetdata['title'] = None   
+         if self.bIssued is False:
+            self.tweetdata['issued'] = None
+
 class LatestRFCParser(HTMLParser):
    ietf = 'http://tools.ietf.org/html/'
    maxRFC = 0
@@ -132,15 +148,60 @@ def rfc_url(rfcnumber):
    return urlpart
 
 def create_author_string(parser):
-   author = parser.tweetdata['author'][0]
-   if len(parser.tweetdata['author']) > 1:
-      author = author + " et al."
+   if parser.tweetdata['author'] is not None:
+      author = parser.tweetdata['author'][0]
+      if len(parser.tweetdata['author']) > 1:
+         author = author + " et al."
+      else:
+         author = author + "."
    else:
-      author = author + "."
+      sys.stderr.write("DC.Creator metadata tag not specified." + "\n")
+      author = None   
+   return author
+
+def processauthor(author):
+   if '@' in author:
+      sys.stderr.write("Redacting author email." + "\n")
+      author = author[0:author.find('<')].strip() + "."
+   
+   #additional exceptions if spotted
+   #not sure if a good idea...   
+   author = author.replace("<>, ","") #exception in #6471
    return author
 
 def create_tweet(parser, rfctitle, rfcurl, author):
-   tweet = rfctitle + " " + parser.tweetdata['title'] + ". " + author + " " + parser.tweetdata['issued'] + " "  + rfcurl 
+   
+   HASHTAGS = " #ietf #computing" #17 Characters
+   LABEL = rfctitle + " " 
+
+   if parser.tweetdata['title'] is not None:   
+      TITLE = parser.tweetdata['title'] + ". "
+   else:
+      TITLE = ""
+
+   if author is not None:
+      AUTHOR = processauthor(author) + " "
+   else: 
+      AUTHOR = ""
+  
+   if parser.tweetdata['issued'] is not None:
+      ISSUED = parser.tweetdata['issued'] + " "
+   else:
+      ISSUED = ""
+
+   tweetpart1 = LABEL + TITLE + AUTHOR + ISSUED
+   
+   currwidth = len(tweetpart1)
+   ELIPSES = 4              
+   ALLOWED = 101 
+   TRUNCATE = ALLOWED - ELIPSES  #remaining space including spaces and hashtags and links
+   if len(tweetpart1) > ALLOWED:
+      sys.stderr.write("Tweet too long at: " + str(currwidth) + " characters. Truncating." + "\n")
+      diff = currwidth - TRUNCATE
+      titlelen = len(TITLE) - diff - ELIPSES
+      tweetpart1 = LABEL + TITLE[0:titlelen].strip() + "... " + AUTHOR + ISSUED
+   
+   tweet = tweetpart1 + rfcurl + HASHTAGS   
    return tweet
 
 def getLatestRFCNumber():
@@ -149,16 +210,30 @@ def getLatestRFCNumber():
    indexparser.feed(html)
 
    if compareLatest(indexparser.maxRFC):
-      writeLatest(parser.maxRFC)
-      #something here about writing a new tweet about a new RFC
+      writeLatest(indexparser.maxRFC)
+      sys.stderr.write("[NEW] RFC" + str(indexparser.maxRFC) + "." + "\n")
+      print makeTweet(indexparser.maxRFC, True)
 
    return indexparser.maxRFC
 
 def rfcToTweet(minRFC, maxRFC):
    #use the latest RFC number and RFC1 to find an RFC to tweet
    random.seed()
-   rfcnumber = random.randrange(minRFC, maxRFC)
-   return rfcnumber
+   rfcnumber = random.randrange(minRFC, maxRFC)   
+   return 3079 #rfcnumber
+
+def makeTweet(rfcnumber, new=False):
+   #read the RFC page
+   parser = returnRFCHTML(rfcnumber)
+
+   #We've an RFC and we can tweet it
+   author = create_author_string(parser)
+   rfctitle = rfc_title(rfcnumber)   
+   if new == True:
+      rfctitle = "[NEW] " + rfc_title(rfcnumber)
+   rfcurl = rfc_url(rfcnumber)
+
+   return create_tweet(parser, rfctitle, rfcurl, author)
 
 #rfc numbers
 minRFC = 1
@@ -166,12 +241,5 @@ maxRFC = getLatestRFCNumber()
 
 rfcnumber = rfcToTweet(minRFC, maxRFC)
 
-#read the RFC page
-parser = returnRFCHTML(rfcToTweet(minRFC, maxRFC))
-
-author = create_author_string(parser)
-rfctitle = rfc_title(rfcnumber)
-rfcurl = rfc_url(rfcnumber)
-
-print create_tweet(parser, rfctitle, rfcurl, author)
-
+tweet = makeTweet(rfcnumber)
+print tweet
