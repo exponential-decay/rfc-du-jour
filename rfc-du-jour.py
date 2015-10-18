@@ -220,7 +220,7 @@ def rfcToTweet(minRFC, maxRFC):
    #use the latest RFC number and RFC1 to find an RFC to tweet
    random.seed()
    rfcnumber = random.randrange(minRFC, maxRFC)   
-   return 3079 #rfcnumber
+   return rfcnumber
 
 def makeTweet(rfcnumber, new=False):
    #read the RFC page
