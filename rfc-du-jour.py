@@ -79,23 +79,20 @@ def createFindLatestRFCRequest():
    return returnURL(req)
 
 #request web page for parsing later
-def returnURL(req, RFCNO=False):
+def returnURL(req, RFCNO=False, RFC=0):
    code = ''
-
    try:
       response = urllib2.urlopen(req)
    except urllib2.HTTPError as e:
       if RFCNO == False:
          sys.stderr.write(str(e.code) + " response code from index request." + "\n")
+         sys.exit(1) 
       if RFCNO == True:
          if e.code == 404:
-            sys.stderr.write("RFC: " + str(1234) + " does not exist.\n")
-      sys.exit(0) 
-
-      #return not found
-      #reseed the url, send a new request
-      #else read the data we want
-
+            #page not found (potentially RFC wasn't issued)
+            #reseed and return a new page...
+            sys.stderr.write("RFC: " + str(RFC) + " does not exist.\n")
+            returnRFCHTML(rfcToTweet(minRFC, maxRFC))
    return response
 
 def compareLatest(current):
@@ -110,10 +107,10 @@ def writeLatest(current):
    f.write(str(current))
    f.close()   
 
-def returnRFCHTML(indexparser, rfcnumber):
+def returnRFCHTML(rfcnumber):
    req = createRFCRequest(rfcnumber)
 
-   response = returnURL(req, True)
+   response = returnURL(req, True, rfcnumber)
    html = response.read()
 
    # This shows you the actual bytes that have been downloaded.
@@ -139,27 +136,38 @@ def create_author_string(parser):
    if len(parser.tweetdata['author']) > 1:
       author = author + " et al."
    else:
-      author = author
+      author = author + "."
    return author
 
 def create_tweet(parser, rfctitle, rfcurl, author):
    tweet = rfctitle + " " + parser.tweetdata['title'] + ". " + author + " " + parser.tweetdata['issued'] + " "  + rfcurl 
    return tweet
 
+def getLatestRFCNumber():
+   html = createFindLatestRFCRequest().read()
+   indexparser = LatestRFCParser()
+   indexparser.feed(html)
 
-html = createFindLatestRFCRequest().read()
+   if compareLatest(indexparser.maxRFC):
+      writeLatest(parser.maxRFC)
+      #something here about writing a new tweet about a new RFC
 
-indexparser = LatestRFCParser()
-indexparser.feed(html)
+   return indexparser.maxRFC
 
-if compareLatest(indexparser.maxRFC):
-   writeLatest(parser.maxRFC)
-   #something here about writing a new tweet about a new RFC
+def rfcToTweet(minRFC, maxRFC):
+   #use the latest RFC number and RFC1 to find an RFC to tweet
+   random.seed()
+   rfcnumber = random.randrange(minRFC, maxRFC)
+   return rfcnumber
 
-random.seed()
-rfcnumber = random.randrange(1, indexparser.maxRFC)
+#rfc numbers
+minRFC = 1
+maxRFC = getLatestRFCNumber()
 
-parser = returnRFCHTML(indexparser, rfcnumber)
+rfcnumber = rfcToTweet(minRFC, maxRFC)
+
+#read the RFC page
+parser = returnRFCHTML(rfcToTweet(minRFC, maxRFC))
 
 author = create_author_string(parser)
 rfctitle = rfc_title(rfcnumber)
