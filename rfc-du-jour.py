@@ -172,7 +172,7 @@ def processauthor(author):
 def create_tweet(parser, rfctitle, rfcurl, author):
    
    HASHTAGS = " #ietf #computing" #17 Characters
-   LABEL = rfctitle + " " 
+   LABEL = "#" + rfctitle + " " 
 
    if parser.tweetdata['title'] is not None:   
       TITLE = parser.tweetdata['title'] + ". "
@@ -191,9 +191,10 @@ def create_tweet(parser, rfctitle, rfcurl, author):
 
    tweetpart1 = LABEL + TITLE + AUTHOR + ISSUED
    
+   #N.B. Tweet with one link leaves 118 alphanumeric
    currwidth = len(tweetpart1)
    ELIPSES = 4              
-   ALLOWED = 101 
+   ALLOWED = 101 #allowed is 140 minus hashtags minus link lenght (CONST 22)
    TRUNCATE = ALLOWED - ELIPSES  #remaining space including spaces and hashtags and links
    if len(tweetpart1) > ALLOWED:
       sys.stderr.write("Tweet too long at: " + str(currwidth) + " characters. Truncating." + "\n")
@@ -201,7 +202,8 @@ def create_tweet(parser, rfctitle, rfcurl, author):
       titlelen = len(TITLE) - diff - ELIPSES
       tweetpart1 = LABEL + TITLE[0:titlelen].strip() + "... " + AUTHOR + ISSUED
    
-   tweet = tweetpart1 + rfcurl + HASHTAGS   
+   tweet = tweetpart1 + rfcurl + HASHTAGS
+   sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")  
    return tweet
 
 def getLatestRFCNumber():
