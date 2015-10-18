@@ -11,10 +11,26 @@
 #curious        https://tools.ietf.org/html/rfc6471
 #coffee         https://tools.ietf.org/html/rfc2324
 
+import os
 import sys
 import random
 import urllib2
+from twitter import *
 from HTMLParser import HTMLParser
+
+#Twitter pieces
+def twitter_authentication():
+	CONSUMER_KEYS = os.path.expanduser('.twitter-consumer-keys')
+	CONSUMER_KEY, CONSUMER_SECRET = read_token_file(CONSUMER_KEYS)
+
+	MY_TWITTER_CREDS = os.path.expanduser('.twitter-rfc-du-jour-credentials')
+	if not os.path.exists(MY_TWITTER_CREDS):
+		oauth_dance("rfc-du-jour", CONSUMER_KEY, CONSUMER_SECRET, MY_TWITTER_CREDS)
+
+	oauth_token, oauth_secret = read_token_file(MY_TWITTER_CREDS)
+	twitter = Twitter(auth=OAuth(oauth_token, oauth_secret, CONSUMER_KEY, CONSUMER_SECRET))
+	
+	return twitter
 
 # create a subclass and override the handler methods
 # info on overriding: https://docs.python.org/2/library/htmlparser.html
@@ -206,7 +222,7 @@ def create_tweet(parser, rfctitle, rfcurl, author):
    sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")  
    return tweet
 
-def getLatestRFCNumber():
+def getLatestRFCNumber(twitter):
    html = createFindLatestRFCRequest().read()
    indexparser = LatestRFCParser()
    indexparser.feed(html)
@@ -214,7 +230,7 @@ def getLatestRFCNumber():
    if compareLatest(indexparser.maxRFC):
       writeLatest(indexparser.maxRFC)
       sys.stderr.write("[NEW] RFC" + str(indexparser.maxRFC) + "." + "\n")
-      print makeTweet(indexparser.maxRFC, True)
+      tweet_update(twitter, makeTweet(indexparser.maxRFC, True))
 
    return indexparser.maxRFC
 
@@ -232,16 +248,34 @@ def makeTweet(rfcnumber, new=False):
    author = create_author_string(parser)
    rfctitle = rfc_title(rfcnumber)   
    if new == True:
-      rfctitle = "[NEW] " + rfc_title(rfcnumber)
+      rfctitle = rfc_title(rfcnumber) + " [NEW]"
    rfcurl = rfc_url(rfcnumber)
 
    return create_tweet(parser, rfctitle, rfcurl, author)
 
-#rfc numbers
-minRFC = 1
-maxRFC = getLatestRFCNumber()
+def tweet_update(twitter, tweet):
+   sys.stderr.write(tweet + "\n")
+   twitter.statuses.update(status=tweet)
 
-rfcnumber = rfcToTweet(minRFC, maxRFC)
+def newRFC(twitter):
+   #rfc numbers
+   minRFC = 1
+   maxRFC = getLatestRFCNumber(twitter)
 
-tweet = makeTweet(rfcnumber)
-print tweet
+   #get RFC number and make tweet
+   rfcnumber = rfcToTweet(minRFC, maxRFC)
+   tweet = makeTweet(rfcnumber)
+   
+   #return tweet...
+   return tweet
+
+def main():
+   #do twitter things, make tweet...
+   twitter = twitter_authentication()
+   newtweet = newRFC(twitter)
+   #Generate two tweets and post to timeline... 
+   tweet_update(twitter, newtweet)
+
+if __name__ == "__main__":
+    main()
+
