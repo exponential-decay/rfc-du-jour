@@ -172,7 +172,9 @@ def create_author_string(parser):
          author = author + "."
    else:
       sys.stderr.write("DC.Creator metadata tag not specified." + "\n")
-      author = None   
+      author = None 
+   #Author list in parser is added to, so needs emptying after we have author
+   del parser.tweetdata['author'][:]  
    return author
 
 def processauthor(author):
