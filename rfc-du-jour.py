@@ -13,8 +13,11 @@
 
 import os
 import sys
+import time
 import random
 import urllib2
+import rfclist as rf
+import pylisttopy as pl
 from twitter import *
 from HTMLParser import HTMLParser
 
@@ -85,6 +88,9 @@ class HTMLMetadataParser(HTMLParser):
             self.tweetdata['issued'] = None
 
 class LatestRFCParser(HTMLParser):
+
+   rfclist_all = []
+
    ietf = 'http://tools.ietf.org/html/'
    maxRFC = 0
    def handle_starttag(self, tag, attrs):
@@ -93,7 +99,8 @@ class LatestRFCParser(HTMLParser):
             if x[0] == 'href':
                if self.ietf in x[1]:
                   val = int(x[1].replace(self.ietf, ''))
-                  self.maxRFC = max(self.maxRFC, val)
+                  if val not in self.rfclist_all:
+							self.rfclist_all.append(val)
 
 #Create requests for IETF server
 def createRFCRequest(no):
@@ -133,11 +140,6 @@ def compareLatest(current):
       f.close()
       return True
    return False
-
-def writeLatest(current):
-   f = open('latest.txt', 'wb')
-   f.write(str(current))
-   f.close()   
 
 def returnRFCHTML(rfcnumber):
    req = createRFCRequest(rfcnumber)
@@ -224,22 +226,26 @@ def create_tweet(parser, rfctitle, rfcurl, author):
    sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")  
    return tweet
 
-def getLatestRFCNumber(twitter):
+def getLatestRFC():
    html = createFindLatestRFCRequest().read()
    indexparser = LatestRFCParser()
    indexparser.feed(html)
 
-   if compareLatest(indexparser.maxRFC):
-      writeLatest(indexparser.maxRFC)
-      sys.stderr.write("[NEW] RFC" + str(indexparser.maxRFC) + "." + "\n")
-      tweet_update(twitter, makeTweet(indexparser.maxRFC, True))
+	#create sets of our two lists to find new RFCs
+   new_list = set(indexparser.rfclist_all)
+   old_list = set(rf.rfclist)
 
-   return indexparser.maxRFC
+	#write new list to our rfc list file
+   #if len(new_list) > len(old_list):
+      #lto = pl.ListToPy(set(indexparser.rfclist_all), "rfclist", "rfclist")
+      #lto.list_to_py()
 
-def rfcToTweet(minRFC, maxRFC):
+   return new_list - old_list
+
+def rfcToTweet():
    #use the latest RFC number and RFC1 to find an RFC to tweet
    random.seed()
-   rfcnumber = random.randrange(minRFC, maxRFC)   
+   rfcnumber = random.randrange(min(rf.rfclist), max(rf.rfclist))   
    return rfcnumber
 
 def makeTweet(rfcnumber, new=False):
@@ -259,24 +265,37 @@ def tweet_update(twitter, tweet):
    sys.stderr.write(tweet + "\n")
    twitter.statuses.update(status=tweet)
 
-def newRFC(twitter):
-   #rfc numbers
-   minRFC = 1
-   maxRFC = getLatestRFCNumber(twitter)
+def newRFC():
 
-   #get RFC number and make tweet
-   rfcnumber = rfcToTweet(minRFC, maxRFC)
-   tweet = makeTweet(rfcnumber)
-   
+   tweets = []
+
+	#Tweet legacy RFCs
+   rfcnumber = rfcToTweet()
+   tweets.append(makeTweet(rfcnumber))
+   sys.stderr.write("RFC" + str(rfcnumber) + "." + "\n")
+	
+	#Tweet new RFCs
+   newrfcs = getLatestRFC()
+   if len(newrfcs) > 0:
+      newrfcs = list(newrfcs)
+      newrfcs.sort()
+      for rfc in newrfcs:
+         tweets.append(makeTweet(rfc, True))
+         sys.stderr.write("[NEW] RFC" + str(rfc) + "." + "\n")
+
    #return tweet...
-   return tweet
+   return tweets
 
 def main():
    #do twitter things, make tweet...
-   twitter = twitter_authentication()
-   newtweet = newRFC(twitter)
+   #twitter = twitter_authentication()
+   newtweets = newRFC()
+
    #Generate two tweets and post to timeline... 
-   tweet_update(twitter, newtweet)
+   for rfc in newtweets:
+      sys.stderr.write(rfc + "\n")
+      time.sleep(10)
+      #tweet_update(twitter, rfc)
 
 if __name__ == "__main__":
     main()
