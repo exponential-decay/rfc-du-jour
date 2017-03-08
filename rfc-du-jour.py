@@ -236,9 +236,9 @@ def getLatestRFC():
    old_list = set(rf.rfclist)
 
 	#write new list to our rfc list file
-   #if len(new_list) > len(old_list):
-      #lto = pl.ListToPy(set(indexparser.rfclist_all), "rfclist", "rfclist")
-      #lto.list_to_py()
+   if len(new_list) > len(old_list):
+      lto = pl.ListToPy(set(indexparser.rfclist_all), "rfclist", "rfclist")
+      lto.list_to_py()
 
    return new_list - old_list
 
