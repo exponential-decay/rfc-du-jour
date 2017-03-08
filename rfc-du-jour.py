@@ -245,7 +245,10 @@ def getLatestRFC():
 def rfcToTweet():
    #use the latest RFC number and RFC1 to find an RFC to tweet
    random.seed()
-   rfcnumber = random.randrange(min(rf.rfclist), max(rf.rfclist))   
+   rfcnumber = random.randrange(min(rf.rfclist), max(rf.rfclist))
+   if rfcnumber not in rf.rfclist:
+      sys.stderr.write("RFC Number not published, finding again. RFC: " + str(rfcnumber) + "\n")
+      return rfcToTweet() 
    return rfcnumber
 
 def makeTweet(rfcnumber, new=False):
