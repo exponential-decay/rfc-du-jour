@@ -1,15 +1,5 @@
+﻿#!/usr/bin/python
 # -*- coding: utf-8 -*
-
-#Inspired by https://tools.ietf.org/html/rfc439
-#https://github.com/exponential-decay/rfc-du-jour
-
-#multi-author:  https://tools.ietf.org/html/rfc6998
-#non-existant:  https://tools.ietf.org/html/rfc7000
-#standard-test: https://tools.ietf.org/html/rfc6998
-#no title:      https://tools.ietf.org/html/rfc1849
-#email:         https://tools.ietf.org/html/rfc4263
-#curious        https://tools.ietf.org/html/rfc6471
-#coffee         https://tools.ietf.org/html/rfc2324
 
 import os
 import sys
@@ -18,22 +8,9 @@ import random
 import urllib2
 import rfclist as rf
 import pylisttopy as pl
-from twitter import *
+import twitterpieces as tw
+
 from HTMLParser import HTMLParser
-
-#Twitter pieces
-def twitter_authentication():
-	CONSUMER_KEYS = os.path.expanduser('.twitter-consumer-keys')
-	CONSUMER_KEY, CONSUMER_SECRET = read_token_file(CONSUMER_KEYS)
-
-	MY_TWITTER_CREDS = os.path.expanduser('.twitter-rfc-du-jour-credentials')
-	if not os.path.exists(MY_TWITTER_CREDS):
-		oauth_dance("rfc-du-jour", CONSUMER_KEY, CONSUMER_SECRET, MY_TWITTER_CREDS)
-
-	oauth_token, oauth_secret = read_token_file(MY_TWITTER_CREDS)
-	twitter = Twitter(auth=OAuth(oauth_token, oauth_secret, CONSUMER_KEY, CONSUMER_SECRET))
-	
-	return twitter
 
 # create a subclass and override the handler methods
 # info on overriding: https://docs.python.org/2/library/htmlparser.html
@@ -102,7 +79,17 @@ class LatestRFCParser(HTMLParser):
                   if val not in self.rfclist_all:
 							self.rfclist_all.append(val)
 
-#Create requests for IETF server
+#Read the RFC master index to return all the numbers
+#of RFCs that have been submitted... 
+def createFindLatestRFCRequest():
+   #index url lists all RFC requests for us...
+   indexurl = 'https://tools.ietf.org/rfc/index'
+   req = urllib2.Request(indexurl)
+   req.add_header('User-Agent', '@rfcdujour')
+   return return_url(req)
+
+#We need to extract some metadata from the RFC HTML
+#form. Authors, title, etc. Do that with this request
 def createRFCRequest(no):
    url = 'https://tools.ietf.org/html/rfc' + str(no)
    req = urllib2.Request(url)
@@ -110,16 +97,8 @@ def createRFCRequest(no):
    req.add_header('Range', 'bytes=0-6200') #we don't need the whole page
    return req
 
-def createFindLatestRFCRequest():
-   #index url lists all RFC requests for us...
-   indexurl = 'https://tools.ietf.org/rfc/index'
-   req = urllib2.Request(indexurl)
-   req.add_header('User-Agent', '@rfcdujour')
-   return returnURL(req)
-
 #request web page for parsing later
-def returnURL(req, RFCNO=False, RFC=0):
-   code = ''
+def return_url(req, RFCNO=False, RFC=0):
    try:
       response = urllib2.urlopen(req)
    except urllib2.HTTPError as e:
@@ -131,20 +110,20 @@ def returnURL(req, RFCNO=False, RFC=0):
             #page not found (potentially RFC wasn't issued)
             #reseed and return a new page...
             sys.stderr.write("RFC: " + str(RFC) + " does not exist.\n")
-            returnRFCHTML(rfcToTweet(minRFC, maxRFC))
+			#could be something else but return
+			#false nontheless...
+         return False
+	#we're looking good!
    return response
 
-def compareLatest(current):
-   f = open('latest.txt', 'rb')
-   if current > int(f.read().strip()):
-      f.close()
-      return True
-   return False
-
-def returnRFCHTML(rfcnumber):
+def test_and_return_html_response(rfcnumber):
    req = createRFCRequest(rfcnumber)
+   response = return_url(req, True, rfcnumber)
+   if response is False:
+      return False
+   return response
 
-   response = returnURL(req, True, rfcnumber)
+def read_rfc_html(response):
    html = response.read()
 
    # This shows you the actual bytes that have been downloaded.
@@ -251,31 +230,50 @@ def rfcToTweet():
       return rfcToTweet() 
    return rfcnumber
 
+#Go through the process of constructing our Tweet...
 def makeTweet(rfcnumber, new=False):
    #read the RFC page
-   parser = returnRFCHTML(rfcnumber)
+   response = test_and_return_html_response(rfcnumber)
+
+   if response is False and new is False:
+      return historical_rfc()
+
+   if response is False and new is True:
+      sys.stderr.write("Error retrieving [NEW] RFC" + str(rfcnumber) + " returning and continuing.\n")	
+      return False
+
+   parser = read_rfc_html(response)
 
    #We've an RFC and we can tweet it
    author = create_author_string(parser)
-   rfctitle = rfc_title(rfcnumber)   
+   rfctitle = rfc_title(rfcnumber)
+   
    if new == True:
       rfctitle = rfc_title(rfcnumber) + " [NEW]"
    rfcurl = rfc_url(rfcnumber)
 
    return create_tweet(parser, rfctitle, rfcurl, author)
 
+#Send the update to Twitter...
 def tweet_update(twitter, tweet):
    sys.stderr.write(tweet + "\n")
    twitter.statuses.update(status=tweet)
 
+#Control the generation of historical RFC tweets
+def historical_rfc():
+   rfcnumber = rfcToTweet()
+   sys.stderr.write("RFC" + str(rfcnumber) + "." + "\n")
+   tweet = makeTweet(rfcnumber)
+   return tweet
+
+#Main function for all the code's capabilities...
 def newRFC():
 
+	#List to store each of our Tweets in...
    tweets = []
 
-	#Tweet legacy RFCs
-   rfcnumber = rfcToTweet()
-   tweets.append(makeTweet(rfcnumber))
-   sys.stderr.write("RFC" + str(rfcnumber) + "." + "\n")
+	#Tweet historical RFC
+   tweets.append(historical_rfc())
 	
 	#Tweet new RFCs
    newrfcs = getLatestRFC()
@@ -283,22 +281,25 @@ def newRFC():
       newrfcs = list(newrfcs)
       newrfcs.sort()
       for rfc in newrfcs:
-         tweets.append(makeTweet(rfc, True))
-         sys.stderr.write("[NEW] RFC" + str(rfc) + "." + "\n")
+         tweet = makeTweet(rfc, True)
+         if tweet is not False:
+            tweets.append(tweet)
+            sys.stderr.write("[NEW] RFC" + str(rfc) + "." + "\n")
 
    #return tweet...
    return tweets
 
 def main():
    #do twitter things, make tweet...
-   #twitter = twitter_authentication()
+   #twitter = tw.twitter_authentication()
    newtweets = newRFC()
 
    #Generate two tweets and post to timeline... 
    for rfc in newtweets:
-      sys.stderr.write(rfc + "\n")
-      time.sleep(10)
-      #tweet_update(twitter, rfc)
+		if rfc is not False:
+		   sys.stderr.write(rfc + "\n")
+		   time.sleep(10)
+		   #tweet_update(twitter, rfc)
 
 if __name__ == "__main__":
     main()
