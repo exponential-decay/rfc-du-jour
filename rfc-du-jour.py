@@ -1,4 +1,4 @@
-﻿#!/usr/bin/python
+#!/usr/bin/python
 # -*- coding: utf-8 -*
 
 import sys
@@ -35,7 +35,7 @@ class HTMLMetadataParser(HTMLParser):
 
       #read from the metadata tags
       if tag == 'meta':
-         for x in attrs:         
+         for x in attrs:
             if x[0] == 'name':
                name = x[1]
             if x[0] == 'content':
@@ -43,23 +43,23 @@ class HTMLMetadataParser(HTMLParser):
 
             if name == self.dcTitle:
                self.tweetdata['title'] = content
-               self.bTitle = True 
+               self.bTitle = True
 
             if name == self.dcCreator:
                if content != '':
                   self.author.append(content)
                   self.bAuth = True
-      
+
             if name == self.dcIssued:
                self.tweetdata['issued'] = content
                self.bIssued = True
 
          if self.bAuth is True:
             self.tweetdata['author'] = self.author
-         else: 
+         else:
             self.tweetdata['author'] = None
          if self.bTitle is False:
-            self.tweetdata['title'] = None   
+            self.tweetdata['title'] = None
          if self.bIssued is False:
             self.tweetdata['issued'] = None
 
@@ -79,7 +79,7 @@ class LatestRFCParser(HTMLParser):
 							self.rfclist_all.append(val)
 
 #Read the RFC master index to return all the numbers
-#of RFCs that have been submitted... 
+#of RFCs that have been submitted...
 def createFindLatestRFCRequest():
    #index url lists all RFC requests for us...
    indexurl = 'https://tools.ietf.org/rfc/index'
@@ -103,7 +103,7 @@ def return_url(req, RFCNO=False, RFC=0):
    except urllib2.HTTPError as e:
       if RFCNO == False:
          sys.stderr.write(str(e.code) + " response code from index request." + "\n")
-         sys.exit(1) 
+         sys.exit(1)
       if RFCNO == True:
          if e.code == 404:
             #page not found (potentially RFC wasn't issued)
@@ -150,48 +150,48 @@ def create_author_string(parser):
          author = author + " et al."
       else:
          author = author + "."
+      #Author list in parser is added to, so needs emptying after we have author
+      del parser.tweetdata['author'][:]
    else:
       sys.stderr.write("DC.Creator metadata tag not specified." + "\n")
-      author = None 
-   #Author list in parser is added to, so needs emptying after we have author
-   del parser.tweetdata['author'][:]  
+      author = None
    return author
 
 def processauthor(author):
    if '@' in author:
       sys.stderr.write("Redacting author email." + "\n")
       author = author[0:author.find('<')].strip() + "."
-   
+
    #additional exceptions if spotted
-   #not sure if a good idea...   
+   #not sure if a good idea...
    author = author.replace("<>, ","") #exception in #6471
    return author
 
 def create_tweet(parser, rfctitle, rfcurl, author):
-   
-   HASHTAGS = " #ietf #computing" #17 Characters
-   LABEL = "#" + rfctitle + " " 
 
-   if parser.tweetdata['title'] is not None:   
+   HASHTAGS = " #ietf #computing" #17 Characters
+   LABEL = "#" + rfctitle + " "
+
+   if parser.tweetdata['title'] is not None:
       TITLE = parser.tweetdata['title'] + ". "
    else:
       TITLE = ""
 
    if author is not None:
       AUTHOR = processauthor(author) + " "
-   else: 
+   else:
       AUTHOR = ""
-  
+
    if parser.tweetdata['issued'] is not None:
       ISSUED = parser.tweetdata['issued'] + " "
    else:
       ISSUED = ""
 
    tweetpart1 = LABEL + TITLE + AUTHOR + ISSUED
-   
+
    #N.B. Tweet with one link leaves 118 alphanumeric
    currwidth = len(tweetpart1)
-   ELIPSES = 4              
+   ELIPSES = 4
    ALLOWED = 101 #allowed is 140 minus hashtags minus link lenght (CONST 22)
    TRUNCATE = ALLOWED - ELIPSES  #remaining space including spaces and hashtags and links
    if len(tweetpart1) > ALLOWED:
@@ -199,9 +199,9 @@ def create_tweet(parser, rfctitle, rfcurl, author):
       diff = currwidth - TRUNCATE
       titlelen = len(TITLE) - diff - ELIPSES
       tweetpart1 = LABEL + TITLE[0:titlelen].strip() + "... " + AUTHOR + ISSUED
-   
+
    tweet = tweetpart1 + rfcurl + HASHTAGS
-   sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")  
+   sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")
    return tweet
 
 def getLatestRFC():
@@ -215,7 +215,8 @@ def getLatestRFC():
 
 	#write new list to our rfc list file
    if len(new_list) > len(old_list):
-      lto = pl.ListToPy(set(indexparser.rfclist_all), "rfclist", "rfclist")
+      sys.stderr.write("Writing new legacy RFC list.\n")
+      lto = pl.ListToPy(set(indexparser.rfclist_all), "rfclist", "/home/exponentialdecay/rfcdujour/rfclist")
       lto.list_to_py()
 
    return new_list - old_list
@@ -226,7 +227,7 @@ def rfcToTweet():
    rfcnumber = random.randrange(min(rf.rfclist), max(rf.rfclist))
    if rfcnumber not in rf.rfclist:
       sys.stderr.write("RFC Number not published, finding again. RFC: " + str(rfcnumber) + "\n")
-      return rfcToTweet() 
+      return rfcToTweet()
    return rfcnumber
 
 #Go through the process of constructing our Tweet...
@@ -238,7 +239,7 @@ def makeTweet(rfcnumber, new=False):
       return historical_rfc()
 
    if response is False and new is True:
-      sys.stderr.write("Error retrieving [NEW] RFC" + str(rfcnumber) + " returning and continuing.\n")	
+      sys.stderr.write("Error retrieving [NEW] RFC" + str(rfcnumber) + " returning and continuing.\n")
       return False
 
    parser = read_rfc_html(response)
@@ -246,7 +247,7 @@ def makeTweet(rfcnumber, new=False):
    #We've an RFC and we can tweet it
    author = create_author_string(parser)
    rfctitle = rfc_title(rfcnumber)
-   
+
    if new == True:
       rfctitle = rfc_title(rfcnumber) + " [NEW]"
    rfcurl = rfc_url(rfcnumber)
@@ -273,7 +274,7 @@ def newRFC():
 
 	#Tweet historical RFC
    tweets.append(historical_rfc())
-	
+
 	#Tweet new RFCs
    newrfcs = getLatestRFC()
    if len(newrfcs) > 0:
@@ -290,16 +291,14 @@ def newRFC():
 
 def main():
    #do twitter things, make tweet...
-   #twitter = tw.twitter_authentication()
+   twitter = tw.twitter_authentication()
    newtweets = newRFC()
 
-   #Generate two tweets and post to timeline... 
+   #Generate two tweets and post to timeline...
    for rfc in newtweets:
 		if rfc is not False:
-		   sys.stderr.write(rfc + "\n")
+		   tweet_update(twitter, rfc)
 		   time.sleep(10)
-		   #tweet_update(twitter, rfc)
 
 if __name__ == "__main__":
     main()
-
