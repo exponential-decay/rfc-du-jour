@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import os
 import sys
 import time
 import random
@@ -22,6 +23,8 @@ class HTMLMetadataParser(HTMLParser):
     dcCreator = "DC.Creator"
     dcIssued = "DC.Date.Issued"
 
+    desc = "description"
+
     # struct to build tweet
     tweetdata = {}
     author = []
@@ -32,6 +35,15 @@ class HTMLMetadataParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
 
+        # Setup defaults but only once. We can remove this once other
+        # dict handling is brought up to scratch.
+        if not self.tweetdata.get("author"):
+            self.tweetdata["author"] = None
+        if not self.tweetdata.get("title"):
+            self.tweetdata["title"] = None
+        if not self.tweetdata.get("issued"):
+            self.tweetdata["issued"] = None
+
         # placeholder variables
         name = ""
         content = ""
@@ -39,14 +51,30 @@ class HTMLMetadataParser(HTMLParser):
         # read from the metadata tags
         if tag == "meta":
             for x in attrs:
-                if x[0] == "name":
-                    name = x[1]
-                if x[0] == "content":
+                if x[0].strip() == "name":
+                    name = x[1].strip()
+                if x[0].strip() == "content":
                     content = x[1].strip()
 
                 if name == self.dcTitle:
-                    self.tweetdata["title"] = content
-                    self.bTitle = True
+                    if content:
+                        self.tweetdata["title"] = content
+                        self.bTitle = True
+
+                # Version 2: This is temporary code to make up for changes
+                # made by the IETF to the template which makes it harder
+                # to access tweet data.
+                if name == self.desc:
+                    content = ""
+                    for attr in attrs:
+                        if attr[0].strip() == "content":
+                            rfc_template = " (RFC )"
+                            content = attr[1].strip()
+                            if content.endswith(rfc_template):
+                                content = content.replace(rfc_template, "")
+                    if content and self.bTitle == False:
+                        self.tweetdata["title"] = content
+                        self.bTitle = True
 
                 if name == self.dcCreator:
                     if content != "":
@@ -59,36 +87,38 @@ class HTMLMetadataParser(HTMLParser):
 
             if self.bAuth is True:
                 self.tweetdata["author"] = self.author
-            else:
-                self.tweetdata["author"] = None
-            if self.bTitle is False:
-                self.tweetdata["title"] = None
-            if self.bIssued is False:
-                self.tweetdata["issued"] = None
 
 
 class LatestRFCParser(HTMLParser):
 
     rfclist_all = []
 
-    ietf = "http://tools.ietf.org/html/"
-    maxRFC = 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "a":
-            for x in attrs:
-                if x[0] == "href":
-                    if self.ietf in x[1]:
-                        val = int(x[1].replace(self.ietf, ""))
-                        if val not in self.rfclist_all:
-                            self.rfclist_all.append(val)
+    def handle_data(self, data):
+        """Read the contents of the HTML and look for specific data
+        that contains an RFC number.
+        """
+        # Look for: doMainDocLink('RFC0001');
+        #
+        # Replace all the main elements and then take the RFC number.
+        if "doMainDocLink" in data.strip():
+            rfc_number = (
+                data.strip()
+                .replace("'", "")
+                .replace("(", "")
+                .replace(");", "")
+                .replace("doMainDocLink", "")
+                .replace("RFC", "")
+            )
+            rfc_number = rfc_number.lstrip("0")
+            if rfc_number not in self.rfclist_all:
+                self.rfclist_all.append(int(rfc_number))
 
 
 # Read the RFC master index to return all the numbers
 # of RFCs that have been submitted...
 def createFindLatestRFCRequest():
-    # index url lists all RFC requests for us...
-    indexurl = "https://tools.ietf.org/rfc/index"
+    """Index url lists all RFC requests for us..."""
+    indexurl = "https://www.rfc-editor.org/rfc-index.html"
     req = urllib2.Request(indexurl)
     req.add_header("User-Agent", "@rfcdujour")
     return return_url(req)
@@ -108,12 +138,12 @@ def createRFCRequest(no):
 def return_url(req, RFCNO=False, RFC=0):
     try:
         response = urllib2.urlopen(req)
-    except urllib2.HTTPError as e:
+    except urllib2.HTTPError as err:
         if RFCNO is False:
-            print("{} response code from index request".format(e.code), file=sys.stderr)
+            print("{} response from index request".format(err), file=sys.stderr)
             sys.exit(1)
         if RFCNO is True:
-            if e.code == 404:
+            if err.code == 404:
                 # page not found (potentially RFC wasn't issued)
                 # reseed and return a new page...
                 print("RFC: {} does not exist".format(RFC), file=sys.stderr)
@@ -206,7 +236,8 @@ def create_tweet(parser, rfctitle, rfcurl, author):
     # N.B. Tweet with one link leaves 118 alphanumeric
     currwidth = len(tweetpart1)
     ELIPSES = 4
-    ALLOWED = 101  # allowed is 140 minus hashtags minus link lenght (CONST 22)
+    # Allowed tweet length is 280 minus hashtags minus link length which is a constant 22.
+    ALLOWED = 200
     TRUNCATE = (
         ALLOWED - ELIPSES
     )  # remaining space including spaces and hashtags and links
@@ -228,6 +259,7 @@ def create_tweet(parser, rfctitle, rfcurl, author):
 
 def getLatestRFC():
     html = createFindLatestRFCRequest().read()
+
     indexparser = LatestRFCParser()
     indexparser.feed(html)
 
@@ -235,13 +267,16 @@ def getLatestRFC():
     new_list = set(indexparser.rfclist_all)
     old_list = set(rf.rfclist)
 
-    # write new list to our rfc list file
+    # Write a new list to our rfc list file.
     if len(new_list) > len(old_list):
         print("Writing new legacy RFC list", file=sys.stderr)
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        rfc_list_file = "rfclist"
+        rfc_list = os.path.join(script_dir, rfc_list_file)
         lto = pl.ListToPy(
             set(indexparser.rfclist_all),
-            "rfclist",
-            "/home/exponentialdecay/rfcdujour/rfclist",
+            rfc_list_file,
+            rfc_list,
         )
         lto.list_to_py()
 
@@ -291,7 +326,6 @@ def makeTweet(rfcnumber, new=False):
 
 # Send the update to Twitter...
 def tweet_update(twitter, tweet):
-    print(tweet, file=sys.stderr)
     twitter.statuses.update(status=tweet)
 
 
@@ -303,16 +337,16 @@ def historical_rfc():
     return tweet
 
 
-# Main function for all the code's capabilities...
 def newRFC():
+    """Generate a new RFC to post."""
 
     # List to store each of our Tweets in...
     tweets = []
 
-    # Tweet historical RFC
+    # Tweet historical RFC.
     tweets.append(historical_rfc())
 
-    # Tweet new RFCs
+    # Tweet new RFCs.
     newrfcs = getLatestRFC()
     if len(newrfcs) > 0:
         newrfcs = list(newrfcs)
@@ -321,20 +355,22 @@ def newRFC():
             tweet = makeTweet(rfc, True)
             if tweet is not False:
                 tweets.append(tweet)
-                print("[NEW] RFC{}".format(rfc), file=sys.stderr)
+                print("Tweet: {}".format(tweet), file=sys.stderr)
 
-    # return tweet...
     return tweets
 
 
 def main():
-    # do twitter things, make tweet...
+    """Primary entry point:
+
+    ...do twitter things, make tweet...
+    """
     twitter = tw.twitter_authentication()
     newtweets = newRFC()
-
     # Generate two tweets and post to timeline...
     for rfc in newtweets:
         if rfc is not False:
+            """Tweet our RFCs."""
             tweet_update(twitter, rfc)
             time.sleep(10)
 
