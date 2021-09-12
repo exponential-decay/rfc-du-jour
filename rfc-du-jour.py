@@ -1,6 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*
 
+from __future__ import print_function
+
 import sys
 import time
 import random
@@ -10,6 +12,7 @@ import pylisttopy as pl
 import twitterpieces as tw
 
 from HTMLParser import HTMLParser
+
 
 # create a subclass and override the handler methods
 # info on overriding: https://docs.python.org/2/library/htmlparser.html
@@ -106,16 +109,15 @@ def return_url(req, RFCNO=False, RFC=0):
     try:
         response = urllib2.urlopen(req)
     except urllib2.HTTPError as e:
-        if RFCNO == False:
-            sys.stderr.write(str(e.code) + " response code from index request." + "\n")
+        if RFCNO is False:
+            print("{} response code from index request".format(e.code), file=sys.stderr)
             sys.exit(1)
-        if RFCNO == True:
+        if RFCNO is True:
             if e.code == 404:
                 # page not found (potentially RFC wasn't issued)
                 # reseed and return a new page...
-                sys.stderr.write("RFC: " + str(RFC) + " does not exist.\n")
-            # could be something else but return
-            # false nontheless...
+                print("RFC: {} does not exist".format(RFC), file=sys.stderr)
+            # could be something else but return false non-the-less...
             return False
     # we're looking good!
     return response
@@ -134,7 +136,7 @@ def read_rfc_html(response):
 
     # This shows you the actual bytes that have been downloaded.
     content_range = response.headers.get("Content-Range")
-    sys.stderr.write("Received: " + content_range + "\n")
+    print("Received: {}".format(content_range), file=sys.stderr)
 
     # instantiate the parser and feed it HTML
     parser = HTMLMetadataParser()
@@ -144,12 +146,12 @@ def read_rfc_html(response):
 
 
 def rfc_title(rfcnumber):
-    rfcpart = "RFC" + str(rfcnumber)
+    rfcpart = "RFC{}".format(rfcnumber)
     return rfcpart
 
 
 def rfc_url(rfcnumber):
-    urlpart = "https://tools.ietf.org/html/rfc" + str(rfcnumber)
+    urlpart = "https://tools.ietf.org/html/rfc{}".format(rfcnumber)
     return urlpart
 
 
@@ -157,20 +159,20 @@ def create_author_string(parser):
     if parser.tweetdata["author"] is not None:
         author = parser.tweetdata["author"][0]
         if len(parser.tweetdata["author"]) > 1:
-            author = author + " et al."
+            author = "{} et al.".format(author)
         else:
             author = author + "."
         # Author list in parser is added to, so needs emptying after we have author
         del parser.tweetdata["author"][:]
     else:
-        sys.stderr.write("DC.Creator metadata tag not specified." + "\n")
+        print("DC.Creator metadata tag not specified", file=sys.stderr)
         author = None
     return author
 
 
 def processauthor(author):
     if "@" in author:
-        sys.stderr.write("Redacting author email." + "\n")
+        print("Redacting author email", file=sys.stderr)
         author = author[0 : author.find("<")].strip() + "."
 
     # additional exceptions if spotted
@@ -209,15 +211,18 @@ def create_tweet(parser, rfctitle, rfcurl, author):
         ALLOWED - ELIPSES
     )  # remaining space including spaces and hashtags and links
     if len(tweetpart1) > ALLOWED:
-        sys.stderr.write(
-            "Tweet too long at: " + str(currwidth) + " characters. Truncating." + "\n"
+        print(
+            "Tweet too long at: {} characters. Truncating".format(currwidth),
+            file=sys.stderr,
         )
         diff = currwidth - TRUNCATE
         titlelen = len(TITLE) - diff - ELIPSES
-        tweetpart1 = LABEL + TITLE[0:titlelen].strip() + "... " + AUTHOR + ISSUED
+        tweetpart1 = "{}{}... {}{}".format(
+            LABEL, TITLE[0:titlelen].strip(), AUTHOR, ISSUED
+        )
 
     tweet = tweetpart1 + rfcurl + HASHTAGS
-    sys.stderr.write("Tweet length: " + str(len(tweet)) + "\n")
+    print("Tweet length: {}".format(len(tweet)), file=sys.stderr)
     return tweet
 
 
@@ -232,7 +237,7 @@ def getLatestRFC():
 
     # write new list to our rfc list file
     if len(new_list) > len(old_list):
-        sys.stderr.write("Writing new legacy RFC list.\n")
+        print("Writing new legacy RFC list", file=sys.stderr)
         lto = pl.ListToPy(
             set(indexparser.rfclist_all),
             "rfclist",
@@ -248,8 +253,9 @@ def rfcToTweet():
     random.seed()
     rfcnumber = random.randrange(min(rf.rfclist), max(rf.rfclist))
     if rfcnumber not in rf.rfclist:
-        sys.stderr.write(
-            "RFC Number not published, finding again. RFC: " + str(rfcnumber) + "\n"
+        print(
+            "RFC Number not published, finding again. RFC: {}".format(rfcnumber),
+            file=sys.stderr,
         )
         return rfcToTweet()
     return rfcnumber
@@ -264,10 +270,9 @@ def makeTweet(rfcnumber, new=False):
         return historical_rfc()
 
     if response is False and new is True:
-        sys.stderr.write(
-            "Error retrieving [NEW] RFC"
-            + str(rfcnumber)
-            + " returning and continuing.\n"
+        print(
+            "Error retrieving [NEW] RFC{} returning and continuing".format(rfcnumber),
+            file=sys.stderr,
         )
         return False
 
@@ -277,7 +282,7 @@ def makeTweet(rfcnumber, new=False):
     author = create_author_string(parser)
     rfctitle = rfc_title(rfcnumber)
 
-    if new == True:
+    if new is True:
         rfctitle = rfc_title(rfcnumber) + " [NEW]"
     rfcurl = rfc_url(rfcnumber)
 
@@ -286,14 +291,14 @@ def makeTweet(rfcnumber, new=False):
 
 # Send the update to Twitter...
 def tweet_update(twitter, tweet):
-    sys.stderr.write(tweet + "\n")
+    print(tweet, file=sys.stderr)
     twitter.statuses.update(status=tweet)
 
 
 # Control the generation of historical RFC tweets
 def historical_rfc():
     rfcnumber = rfcToTweet()
-    sys.stderr.write("RFC" + str(rfcnumber) + "." + "\n")
+    print("RFC{}".format(rfcnumber), file=sys.stderr)
     tweet = makeTweet(rfcnumber)
     return tweet
 
@@ -316,7 +321,7 @@ def newRFC():
             tweet = makeTweet(rfc, True)
             if tweet is not False:
                 tweets.append(tweet)
-                sys.stderr.write("[NEW] RFC" + str(rfc) + "." + "\n")
+                print("[NEW] RFC{}".format(rfc), file=sys.stderr)
 
     # return tweet...
     return tweets
